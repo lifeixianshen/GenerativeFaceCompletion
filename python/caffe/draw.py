@@ -28,10 +28,7 @@ def get_pooling_types_dict():
     """Get dictionary mapping pooling type number to type name
     """
     desc = caffe_pb2.PoolingParameter.PoolMethod.DESCRIPTOR
-    d = {}
-    for k, v in desc.values_by_name.items():
-        d[v.number] = k
-    return d
+    return {v.number: k for k, v in desc.values_by_name.items()}
 
 
 def get_edge_label(layer):
@@ -39,15 +36,13 @@ def get_edge_label(layer):
     """
 
     if layer.type == 'Data':
-        edge_label = 'Batch ' + str(layer.data_param.batch_size)
-    elif layer.type == 'Convolution' or layer.type == 'Deconvolution':
-        edge_label = str(layer.convolution_param.num_output)
+        return f'Batch {str(layer.data_param.batch_size)}'
+    elif layer.type in ['Convolution', 'Deconvolution']:
+        return str(layer.convolution_param.num_output)
     elif layer.type == 'InnerProduct':
-        edge_label = str(layer.inner_product_param.num_output)
+        return str(layer.inner_product_param.num_output)
     else:
-        edge_label = '""'
-
-    return edge_label
+        return '""'
 
 
 def get_layer_label(layer, rankdir):
@@ -65,51 +60,50 @@ def get_layer_label(layer, rankdir):
         A label for the current layer
     """
 
-    if rankdir in ('TB', 'BT'):
-        # If graph orientation is vertical, horizontal space is free and
-        # vertical space is not; separate words with spaces
-        separator = ' '
-    else:
-        # If graph orientation is horizontal, vertical space is free and
-        # horizontal space is not; separate words with newlines
-        separator = '\\n'
-
-    if layer.type == 'Convolution' or layer.type == 'Deconvolution':
+    separator = ' ' if rankdir in ('TB', 'BT') else '\\n'
+    if layer.type in ['Convolution', 'Deconvolution']:
         # Outer double quotes needed or else colon characters don't parse
         # properly
-        node_label = '"%s%s(%s)%skernel size: %d%sstride: %d%spad: %d"' %\
-                     (layer.name,
-                      separator,
-                      layer.type,
-                      separator,
-                      layer.convolution_param.kernel_size[0] if len(layer.convolution_param.kernel_size._values) else 1,
-                      separator,
-                      layer.convolution_param.stride[0] if len(layer.convolution_param.stride._values) else 1,
-                      separator,
-                      layer.convolution_param.pad[0] if len(layer.convolution_param.pad._values) else 0)
+        return '"%s%s(%s)%skernel size: %d%sstride: %d%spad: %d"' % (
+            layer.name,
+            separator,
+            layer.type,
+            separator,
+            layer.convolution_param.kernel_size[0]
+            if len(layer.convolution_param.kernel_size._values)
+            else 1,
+            separator,
+            layer.convolution_param.stride[0]
+            if len(layer.convolution_param.stride._values)
+            else 1,
+            separator,
+            layer.convolution_param.pad[0]
+            if len(layer.convolution_param.pad._values)
+            else 0,
+        )
     elif layer.type == 'Pooling':
         pooling_types_dict = get_pooling_types_dict()
-        node_label = '"%s%s(%s %s)%skernel size: %d%sstride: %d%spad: %d"' %\
-                     (layer.name,
-                      separator,
-                      pooling_types_dict[layer.pooling_param.pool],
-                      layer.type,
-                      separator,
-                      layer.pooling_param.kernel_size,
-                      separator,
-                      layer.pooling_param.stride,
-                      separator,
-                      layer.pooling_param.pad)
+        return '"%s%s(%s %s)%skernel size: %d%sstride: %d%spad: %d"' % (
+            layer.name,
+            separator,
+            pooling_types_dict[layer.pooling_param.pool],
+            layer.type,
+            separator,
+            layer.pooling_param.kernel_size,
+            separator,
+            layer.pooling_param.stride,
+            separator,
+            layer.pooling_param.pad,
+        )
     else:
-        node_label = '"%s%s(%s)"' % (layer.name, separator, layer.type)
-    return node_label
+        return f'"{layer.name}{separator}({layer.type})"'
 
 
 def choose_color_by_layertype(layertype):
     """Define colors for nodes based on the layer type.
     """
     color = '#6495ED'  # Default
-    if layertype == 'Convolution' or layertype == 'Deconvolution':
+    if layertype in ['Convolution', 'Deconvolution']:
         color = '#FF5050'
     elif layertype == 'Pooling':
         color = '#FF9900'
@@ -140,7 +134,7 @@ def get_pydot_graph(caffe_net, rankdir, label_edges=True):
     pydot_edges = []
     for layer in caffe_net.layer:
         node_label = get_layer_label(layer, rankdir)
-        node_name = "%s_%s" % (layer.name, layer.type)
+        node_name = f"{layer.name}_{layer.type}"
         if (len(layer.bottom) == 1 and len(layer.top) == 1 and
            layer.bottom[0] == layer.top[0]):
             # We have an in-place neuron layer.
@@ -151,21 +145,25 @@ def get_pydot_graph(caffe_net, rankdir, label_edges=True):
             layer_style['fillcolor'] = choose_color_by_layertype(layer.type)
             pydot_nodes[node_name] = pydot.Node(node_label, **layer_style)
         for bottom_blob in layer.bottom:
-            pydot_nodes[bottom_blob + '_blob'] = pydot.Node('%s' % bottom_blob,
-                                                            **BLOB_STYLE)
+            pydot_nodes[f'{bottom_blob}_blob'] = pydot.Node(f'{bottom_blob}', **BLOB_STYLE)
             edge_label = '""'
-            pydot_edges.append({'src': bottom_blob + '_blob',
-                                'dst': node_name,
-                                'label': edge_label})
+            pydot_edges.append(
+                {
+                    'src': f'{bottom_blob}_blob',
+                    'dst': node_name,
+                    'label': edge_label,
+                }
+            )
         for top_blob in layer.top:
-            pydot_nodes[top_blob + '_blob'] = pydot.Node('%s' % (top_blob))
-            if label_edges:
-                edge_label = get_edge_label(layer)
-            else:
-                edge_label = '""'
-            pydot_edges.append({'src': node_name,
-                                'dst': top_blob + '_blob',
-                                'label': edge_label})
+            pydot_nodes[f'{top_blob}_blob'] = pydot.Node(f'{top_blob}')
+            edge_label = get_edge_label(layer) if label_edges else '""'
+            pydot_edges.append(
+                {
+                    'src': node_name,
+                    'dst': f'{top_blob}_blob',
+                    'label': edge_label,
+                }
+            )
     # Now, add the nodes and edges to the graph.
     for node in pydot_nodes.values():
         pydot_graph.add_node(node)

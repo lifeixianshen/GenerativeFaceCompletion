@@ -29,15 +29,14 @@ def parse_args():
                               'attrs.html#k:rankdir'),
                         default='LR')
 
-    args = parser.parse_args()
-    return args
+    return parser.parse_args()
 
 
 def main():
     args = parse_args()
     net = caffe_pb2.NetParameter()
     text_format.Merge(open(args.input_net_proto_file).read(), net)
-    print('Drawing net to %s' % args.output_image_file)
+    print(f'Drawing net to {args.output_image_file}')
     caffe.draw.draw_net_to_file(net, args.output_image_file, args.rankdir)
 
 
